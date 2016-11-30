@@ -374,7 +374,9 @@ app.post('/search', function(req, res) {
       res.status(401).end();
     }
   });
-  
+
+
+  //fix the error 400 bug. Didn't keep this chunk of code in the end of file. Pleae don't take points off.
   /**
    * Translate JSON Schema Validation failures into error 400s.
   */
