@@ -1,5 +1,6 @@
 var database = require('./database');
 var StatusUpdateSchema = require('./schemas/statusupdate.json');
+var CommentSchema = require('./schemas/comment.json');
 var validate = require('express-jsonschema').validate;
 var writeDocument = database.writeDocument;
 var addDocument = database.addDocument;
@@ -154,16 +155,7 @@ res.send(newUpdate); } else {
   }
 });
 
-/**
- * Translate JSON Schema Validation failures into error 400s.
-*/
-app.use(function(err, req, res, next) {
-if (err.name === 'JsonSchemaValidation') {
-    // Set a bad request http response status
-res.status(400).end(); } else {
-    // It's some other sort of error; pass it to next error middleware handler
-next(err); }
-});
+
 
 // Reset database.
 app.post('/resetdb', function(req, res) {
@@ -305,4 +297,91 @@ app.post('/search', function(req, res) {
     } else {
     // 400: Bad Request.
     res.status(400).end();
-    } });      
+    } });
+
+
+    // POST /comment
+    app.put('/feeditem/:feeditemid/comments',
+    validate({ body: CommentSchema }), function(req, res) {
+    // If this function runs, `req.body` passed JSON validation!
+    var feedItemId = parseInt(req.params.feeditemid,10);
+    var body = req.body;
+    var fromUser = getUserIdFromToken(req.get('Authorization'));
+    // Check if requester is authorized to post this status update.
+    // (The requester must be the author of the update.)
+    if (fromUser === body.author) {
+      var feedItem = readDocument('feedItems',feedItemId);
+      var newComment = {
+        "author" : body.author,
+        "contents": body.contents,
+        "postDate": new Date().getTime(),
+        "likeCounter": []
+      }
+      feedItem.comments.push(newComment);
+      writeDocument('feedItems', feedItem);
+      res.status(201);
+        // Send the update!
+       res.send(getFeedItemSync(feedItemId));
+    } else {
+        // 401: Unauthorized.
+        res.status(401).end();
+      }
+    });
+
+    //like a comment
+    app.put('/feeditem/:feeditemid/:commentIdx/:userid',
+    function(req, res) {
+    // If this function runs, `req.body` passed JSON validation!
+    var feedItemId = parseInt(req.params.feeditemid,10);
+    var fromUser = getUserIdFromToken(req.get('Authorization'));
+    var userId = parseInt(req.params.userid,10);
+    var commentIdx = parseInt(req.params.commentIdx,10);
+    // Check if requester is authorized to post this status update.
+    // (The requester must be the author of the update.)
+    if (fromUser === userId) {
+      var feedItem = readDocument('feedItems',feedItemId);
+      var comment = feedItem.comments[commentIdx];
+      comment.likeCounter.push(userId);
+      writeDocument('feedItems', feedItem);
+      comment.author = readDocument("users", comment.author);
+      res.status(201);
+      res.send(comment);
+    } else {
+        // 401: Unauthorized.
+        res.status(401).end();
+      }
+    });
+
+    // unlike comments
+  app.delete('/feeditem/:feeditemid/:commentIdx/:userid',
+    function(req,res) {
+    var fromUser = getUserIdFromToken(req.get('Authorization'));
+    var feedItemId = parseInt(req.params.feeditemid,10);
+    var userId = parseInt(req.params.userid,10);
+    var commentIdx = parseInt(req.params.commentIdx,10);
+    if (fromUser === userId) {
+      var feedItem = readDocument("feedItems",feedItemId);
+      var comment = feedItem.comments[commentIdx];
+      var userIndex = comment.likeCounter.indexOf(userId);
+      if (userIndex !== -1) {
+        comment.likeCounter.splice(userIndex, 1);
+        writeDocument("feedItems", feedItem);
+      }
+      comment.author = readDocument("users", comment.author);
+      res.status(201);
+      res.send(comment);
+    }else {
+      res.status(401).end();
+    }
+  });
+  
+  /**
+   * Translate JSON Schema Validation failures into error 400s.
+  */
+  app.use(function(err, req, res, next) {
+  if (err.name === 'JsonSchemaValidation') {
+      // Set a bad request http response status
+  res.status(400).end(); } else {
+      // It's some other sort of error; pass it to next error middleware handler
+  next(err); }
+  });
